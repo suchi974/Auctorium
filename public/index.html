@@ -28,10 +28,34 @@
           <button class="nav-pill" id="sellerNav" data-view="seller">Seller</button>
           <button class="nav-pill" id="buyerNav" data-view="buyer">Buyer</button>
           <button class="nav-pill" id="adminNav" data-view="admin">Admin</button>
-          <span id="navUser" class="subtle" style="margin-left:8px;">Guest access</span>
           <button class="btn btn-secondary" id="loginButton">Log in</button>
           <button class="btn btn-secondary" id="registerButton">Register</button>
-          <button class="btn btn-primary" id="logoutButton" style="display:none;">Log out</button>
+          
+          <!-- User Avatar Dropdown -->
+          <div class="avatar-menu" id="avatarMenu" style="display:none;">
+            <button class="avatar-btn" id="avatarBtn">
+              <span class="avatar-circle" id="avatarCircle">G</span>
+            </button>
+            <div class="avatar-dropdown" id="avatarDropdown">
+              <div class="dropdown-header">
+                <div class="dropdown-user-name" id="dropdownUserName">User</div>
+                <div class="dropdown-user-email" id="dropdownUserEmail">user@example.com</div>
+              </div>
+              <div class="dropdown-divider"></div>
+              <div class="dropdown-role" id="dropdownUserRole">Role: Buyer</div>
+              <div class="dropdown-divider"></div>
+              <button class="dropdown-item" id="dashboardLink">
+                <span>📊</span> Dashboard
+              </button>
+              <button class="dropdown-item" id="profileLink">
+                <span>👤</span> Profile
+              </button>
+              <div class="dropdown-divider"></div>
+              <button class="dropdown-item logout" id="logoutButton">
+                <span>🚪</span> Logout
+              </button>
+            </div>
+          </div>
         </nav>
       </div>
     </header>
@@ -102,6 +126,19 @@
             </div>
           </div>
           <div class="grid" id="productGrid"></div>
+        </div>
+
+        <!-- Live Bid Notifications Section -->
+        <div class="panel" style="margin-top:20px;">
+          <div class="section-head">
+            <div>
+              <h3>⚡ Live bid updates</h3>
+              <p class="subtle">Real-time highest bids from active auctions.</p>
+            </div>
+          </div>
+          <div class="timeline" id="liveBidsList">
+            <div class="empty-state">No bids yet. Check back soon!</div>
+          </div>
         </div>
       </section>
 

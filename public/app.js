@@ -101,10 +101,17 @@ async function loadProducts() {
   const params = new URLSearchParams();
   const search = els.searchInput.value.trim();
   const category = els.categoryFilter.value;
-  const status = els.statusFilter.value;
+  let status = els.statusFilter.value;
+  
+  // Default to showing only live auctions if on auction page and no status filter is selected
+  if (!status && state.currentView === 'auction') {
+    status = 'active';
+  }
+  
   if (search) params.set('search', search);
   if (category) params.set('category', category);
   if (status) params.set('status', status);
+  
   const res = await fetch(`${API}/products?${params.toString()}`);
   state.products = await res.json();
   renderProducts();
@@ -378,11 +385,17 @@ async function submitAuth() {
 }
 
 function updateNav() {
-  const displayName = state.user ? state.user.name || state.user.email : 'Guest';
-  els.navUser.textContent = state.user ? `Signed in as ${displayName}` : 'Guest access';
   const loginBtn = document.getElementById('loginButton');
   const registerBtn = document.getElementById('registerButton');
   const logoutBtn = document.getElementById('logoutButton');
+  const avatarMenu = document.getElementById('avatarMenu');
+  const avatarCircle = document.getElementById('avatarCircle');
+  const dropdownUserName = document.getElementById('dropdownUserName');
+  const dropdownUserEmail = document.getElementById('dropdownUserEmail');
+  const dropdownUserRole = document.getElementById('dropdownUserRole');
+  const dashboardLink = document.getElementById('dashboardLink');
+  const profileLink = document.getElementById('profileLink');
+  
   const sellBtn = document.getElementById('sellBtn');
   const sellerNav = document.getElementById('sellerNav');
   const buyerNav = document.getElementById('buyerNav');
@@ -390,6 +403,24 @@ function updateNav() {
 
   if (loginBtn) loginBtn.style.display = state.user ? 'none' : 'inline-flex';
   if (registerBtn) registerBtn.style.display = state.user ? 'none' : 'inline-flex';
+  
+  // Show avatar menu only when logged in
+  if (avatarMenu) avatarMenu.style.display = state.user ? 'flex' : 'none';
+  
+  if (state.user) {
+    // Update avatar with first letter of email or name
+    const initials = (state.user.name || state.user.email).charAt(0).toUpperCase();
+    if (avatarCircle) avatarCircle.textContent = initials;
+    if (dropdownUserName) dropdownUserName.textContent = state.user.name || state.user.email;
+    if (dropdownUserEmail) dropdownUserEmail.textContent = state.user.email;
+    const roleText = state.user.role ? state.user.role.charAt(0).toUpperCase() + state.user.role.slice(1) : 'User';
+    if (dropdownUserRole) dropdownUserRole.textContent = `Role: ${roleText}`;
+    
+    // Hide profile/dashboard based on role
+    if (dashboardLink) dashboardLink.style.display = ['seller', 'buyer', 'admin'].includes(state.user.role) ? 'flex' : 'none';
+    if (profileLink) profileLink.style.display = 'flex';
+  }
+  
   if (logoutBtn) logoutBtn.style.display = state.user ? 'inline-flex' : 'none';
   if (sellBtn) sellBtn.style.display = state.user?.role === 'seller' ? 'inline-flex' : 'none';
   if (sellerNav) sellerNav.style.display = state.user?.role === 'seller' ? 'inline-flex' : 'none';
@@ -477,6 +508,12 @@ function bindEvents() {
   const loginButton = document.getElementById('loginButton');
   const registerButton = document.getElementById('registerButton');
   const logoutButton = document.getElementById('logoutButton');
+  const avatarBtn = document.getElementById('avatarBtn');
+  const avatarMenu = document.getElementById('avatarMenu');
+  const avatarDropdown = document.getElementById('avatarDropdown');
+  const dashboardLink = document.getElementById('dashboardLink');
+  const profileLink = document.getElementById('profileLink');
+  
   const sellBtn = document.getElementById('sellBtn');
   const closeAuth = document.getElementById('closeAuth');
   const authModeSwitch = document.getElementById('authModeSwitch');
@@ -499,6 +536,40 @@ function bindEvents() {
   if (loginButton) loginButton.addEventListener('click', () => openAuthModal('login'));
   if (registerButton) registerButton.addEventListener('click', () => openAuthModal('register'));
   if (logoutButton) logoutButton.addEventListener('click', logout);
+  
+  // Avatar dropdown functionality
+  if (avatarBtn) {
+    avatarBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (avatarMenu) avatarMenu.classList.toggle('open');
+    });
+  }
+  
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (avatarMenu && !avatarMenu.contains(e.target)) {
+      avatarMenu.classList.remove('open');
+    }
+  });
+  
+  // Dashboard link
+  if (dashboardLink) {
+    dashboardLink.addEventListener('click', () => {
+      if (avatarMenu) avatarMenu.classList.remove('open');
+      if (state.user?.role === 'seller') setView('seller');
+      if (state.user?.role === 'buyer') setView('buyer');
+      if (state.user?.role === 'admin') setView('admin');
+    });
+  }
+  
+  // Profile link
+  if (profileLink) {
+    profileLink.addEventListener('click', () => {
+      if (avatarMenu) avatarMenu.classList.remove('open');
+      showToast('Profile page is not yet available. Coming soon!', 'info');
+    });
+  }
+  
   if (sellBtn) sellBtn.addEventListener('click', () => setView('seller'));
   if (closeAuth) closeAuth.addEventListener('click', closeAuthModal);
   if (authModeSwitch) authModeSwitch.addEventListener('click', () => openAuthModal(state.authMode === 'login' ? 'register' : 'login'));
@@ -526,12 +597,72 @@ function bindEvents() {
   }
 }
 
+// Live Bid Notifications
+let globalSocket = null;
+const liveBidsCache = {};
+
+function initLiveBidNotifications() {
+  if (globalSocket) globalSocket.disconnect();
+  
+  globalSocket = io();
+  
+  globalSocket.on('newBid', (bid) => {
+    // Update live bids cache
+    liveBidsCache[bid.product_id] = bid;
+    renderLiveBids();
+  });
+  
+  globalSocket.on('connect', () => {
+    // Emit event to listen to all bids
+    globalSocket.emit('listenToAllBids');
+  });
+}
+
+function renderLiveBids() {
+  const liveBidsList = document.getElementById('liveBidsList');
+  if (!liveBidsList) return;
+  
+  const bids = Object.values(liveBidsCache).sort((a, b) => new Date(b.b_time) - new Date(a.b_time)).slice(0, 5);
+  
+  if (bids.length === 0) {
+    liveBidsList.innerHTML = '<div class="empty-state">No bids yet. Check back soon!</div>';
+    return;
+  }
+  
+  liveBidsList.innerHTML = bids.map((bid) => {
+    const timeAgo = getTimeAgo(new Date(bid.b_time));
+    return `
+      <div class="timeline-item live-bid-item">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+          <div>
+            <strong>${bid.product_name || 'Product'}</strong>
+            <div class="subtle" style="font-size:0.85rem; margin-top:4px;">${bid.buyer_name || 'Anonymous'} bid ${formatPrice(bid.b_price)}</div>
+          </div>
+          <span class="secondary-text" style="white-space:nowrap; font-size:0.8rem;">${timeAgo}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function getTimeAgo(date) {
+  const seconds = Math.floor((new Date() - date) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 async function init() {
   bindEvents();
   setView('home');
   updateNav();
   await loadCategories();
   await loadProducts();
+  initLiveBidNotifications();
   renderDashboard();
   if (state.user) {
     renderDashboard();

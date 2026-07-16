@@ -11,6 +11,11 @@ module.exports = function registerBidSocket(io) {
       socket.leave(`product_${productId}`);
     });
 
+    // Listen to all bids globally for live notifications
+    socket.on('listenToAllBids', () => {
+      socket.join('all_bids_room');
+    });
+
     socket.on('disconnect', () => {
       console.log(`Socket disconnected: ${socket.id}`);
     });

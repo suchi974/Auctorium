@@ -71,18 +71,32 @@ exports.placeBid = async (req, res) => {
 
     await conn.commit();
 
-    const bidPayload = {
+    // Fetch complete bid information including product name and buyer name
+    const [bidInfo] = await db.query(
+      `SELECT b.*, p.name AS product_name, buy.name AS buyer_name 
+       FROM bids b
+       JOIN products p ON b.product_id = p.id
+       JOIN buyers buy ON b.buyer_id = buy.id
+       WHERE b.bid_id = ?`,
+      [result.insertId]
+    );
+
+    const bidPayload = bidInfo.length > 0 ? bidInfo[0] : {
       bid_id: result.insertId,
       product_id,
       buyer_id,
       b_price,
-      b_time: new Date()
+      b_time: new Date(),
+      product_name: 'Product',
+      buyer_name: 'Anonymous'
     };
 
     // Broadcast to all clients watching this auction room in real time
     const io = req.app.get('io');
     if (io) {
       io.to(`product_${product_id}`).emit('newBid', bidPayload);
+      // Also broadcast to all clients listening for live updates (home page)
+      io.to('all_bids_room').emit('newBid', bidPayload);
     }
 
     res.status(201).json({ message: 'Bid placed successfully', bid: bidPayload });
