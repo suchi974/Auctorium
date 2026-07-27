@@ -1,7 +1,3 @@
-
-
-
-
 /* Seller auction management and buyer payment-status presentation layer. */
 (() => {
   const api = '/api';
@@ -62,7 +58,7 @@
     if (!link) return;
     link.childNodes[link.childNodes.length - 1].textContent = ' Dashboard';
     link.setAttribute('aria-label', 'Seller Dashboard');
-    
+
     // Add "My Auctions" tab if it doesn't exist
     const navContainer = link.closest('.nav-links');
     if (navContainer && !navContainer.querySelector('[data-testid="nav-my-auctions"]')) {
@@ -163,56 +159,100 @@
       const reserve = fd.get('reserve_price'); if (reserve && Number(reserve) < starting) { error.textContent = 'Reserve price must be at least the starting price.'; return; }
       if (fd.get('end_time') && new Date(fd.get('end_time')) <= new Date()) { error.textContent = 'End time must be in the future.'; return; }
       try { const image_url = await uploadImage(fd.get('image')); const payload = { name: fd.get('name').trim(), description: fd.get('description').trim(), category_id: Number(fd.get('category_id')), starting_price: starting, reserve_price: reserve || null }; if (fd.get('end_time')) payload.end_time = new Date(fd.get('end_time')).toISOString(); if (image_url) payload.image_url = image_url;
-        const response = await fetch(`${api}/seller/auctions/${auction.id}`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify(payload) }); const data = await response.json(); if (!response.ok) throw new Error(data.message || 'Unable to update auction'); close(); notice('Auction updated successfully.'); renderManager();
+        const response = await fetch(`${api}/seller/auctions/${auction.id}`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify(payload) }); const data = await response.json(); if (!response.ok) throw new Error(data.message || 'Unable to update auction'); close(); notice('Auction updated successfully.'); renderManager(true);
       } catch (err) { error.textContent = err.message; }
     });
   }
   let managerRendering = false;
   let ignoreManagerMutationsUntil = 0;
-  async function renderManager() {
+  let lastSnapshot = null;
+
+  // force=true skips the "did anything change" check (used right after an edit/save,
+  // where we know the data changed but want it to definitely re-fetch and redraw).
+  async function renderManager(force = false) {
     if (managerRendering) return;
     managerRendering = true;
     try {
-    const user = getUser(); const old = document.getElementById('seller-auction-manager'); if (old) old.remove();
-    if (!user || user.role !== 'seller' || !location.pathname.startsWith('/seller')) return;
-    const [response, categoriesResponse, alertsResponse] = await Promise.all([
-      fetch(`${api}/seller/auctions`, { headers: authHeaders() }),
-      fetch(`${api}/categories`),
-      fetch(`${api}/seller/auctions/recent-alerts`, { headers: authHeaders() }),
-    ]);
-    if (!response.ok) return; const auctions = await response.json();
-    const categories = categoriesResponse.ok ? await categoriesResponse.json() : [];
-    const sellerAlerts = alertsResponse.ok ? await alertsResponse.json() : [];
-    const anchor = [...document.querySelectorAll('h2')].find((node) => node.textContent.trim() === 'All auctions')?.parentElement || document.querySelector('main') || document.querySelector('[role="main"]') || document.body;
-    const listingHeading = [...anchor.querySelectorAll('h2')].find((node) => node.textContent.trim() === 'All auctions');
-    if (listingHeading) { listingHeading.style.display = 'none'; if (listingHeading.nextElementSibling) listingHeading.nextElementSibling.style.display = 'none'; }
-    const live = auctions.filter(isLive); const ended = auctions.filter(isCompleted);
-    const bidTotal = auctions.reduce((sum, auction) => sum + Number(auction.bid_count || 0), 0);
-    const sold = ended.filter((auction) => auction.winner_id);
-    const revenue = sold.reduce((sum, auction) => sum + Number(auction.current_price || 0), 0);
-    const soldRate = ended.length ? Math.round((sold.length / ended.length) * 100) : 0;
-    const card = (auction) => {
-      const liveAuction = isLive(auction); const endedAuction = isCompleted(auction);
-      const status = liveAuction ? 'Live' : endedAuction ? 'Ended' : 'Pending';
-      const detail = liveAuction
-        ? `<div><strong>Status:</strong> Live</div><div><strong>Time:</strong> ${remainingTime(auction.end_time)}</div><div><strong>Current highest bid:</strong> ${money(auction.highest_bid ?? auction.current_price)}</div><div><strong>Total bids:</strong> ${auction.bid_count}</div>`
-        : endedAuction
-          ? `<div><strong>Status:</strong> Ended</div><div><strong>Final selling price:</strong> ${auction.winner_id ? money(auction.current_price) : 'No sale'}</div><div><strong>Winning bid:</strong> ${auction.winner_id ? money(auction.current_price) : '—'}</div><div><strong>Ended:</strong> ${new Date(auction.end_time).toLocaleString()}</div>`
-          : `<div><strong>Status:</strong> ${status}</div><div><strong>Starts:</strong> ${new Date(auction.start_time).toLocaleString()}</div><div><strong>Starting price:</strong> ${money(auction.starting_price)}</div>`;
-      return `<article class="sam-card"><img class="sam-card-image" src="${escapeHtml(auction.image_url || '')}" alt="${escapeHtml(auction.name)}" onerror="this.style.display='none'"><div class="sam-card-content"><span class="sam-status ${endedAuction ? 'ended' : liveAuction ? '' : 'pending'}">${status}</span><div class="sam-meta">${escapeHtml(auction.category_name)}</div><h3>${escapeHtml(auction.name)}</h3><div class="sam-meta">${liveAuction ? remainingTime(auction.end_time) : endedAuction ? `Ended ${new Date(auction.end_time).toLocaleDateString()}` : 'Awaiting start'}</div><div class="sam-actions"><button class="sam-button secondary" data-view-id="${auction.id}">View auction</button><button class="sam-button" data-id="${auction.id}" ${endedAuction ? 'disabled' : ''}>${endedAuction ? 'Ended auction' : 'Edit auction'}</button></div></div></article>`;
-    };
-    const section = document.createElement('section'); section.id = 'seller-auction-manager'; section.innerHTML = `<div class="fade-up"><div class="flex items-center justify-between gap-4"><div><div class="text-[11px] uppercase tracking-[0.3em] text-accent"></div><h1 class="serif text-4xl md:text-5xl mt-2">Dashboard</h1></div><a href="/" class="text-sm text-accent hover:underline whitespace-nowrap" data-testid="seller-dashboard-back"></a></div><p class="text-muted-foreground mt-3">Your auction performance, sales, and activity in one place.</p></div><div class="sam-dashboard-grid"><div class="sam-metric"><div class="label">Total auctions</div><div class="value">${auctions.length}</div></div><div class="sam-metric"><div class="label">Live auctions</div><div class="value">${live.length}</div></div><div class="sam-metric"><div class="label">Ended auctions</div><div class="value">${ended.length}</div></div><div class="sam-metric"><div class="label">Bids received</div><div class="value">${bidTotal}</div></div></div><div class="sam-summary"><div class="sam-panel"><div class="label">Revenue summary</div><h3>${money(revenue)} in completed sales</h3><div class="sam-meta">Across ${sold.length} sold auction${sold.length === 1 ? '' : 's'}.</div></div><div class="sam-panel"><div class="label">Auction performance</div><h3>${soldRate}% completed-auction sell-through</h3><div class="sam-meta">Average ${auctions.length ? (bidTotal / auctions.length).toFixed(1) : '0'} bids per auction.</div></div></div><div class="rounded-2xl border border-border bg-card p-6" style="margin-top:1rem"><h2 class="serif text-2xl">Recent alerts</h2><div class="mt-5 space-y-4">${sellerAlerts.slice(0, 5).map((note) => `<div class="text-sm"><div class="font-medium leading-snug">${escapeHtml(note.title)}</div><div class="text-xs text-muted-foreground mt-0.5 leading-relaxed">${escapeHtml(note.message || '')}</div><div class="text-[11px] text-muted-foreground mt-1">${timeAgo(note.created_at)}</div></div>`).join('') || '<div class="text-sm text-muted-foreground">No alerts yet.</div>'}</div></div><div style="margin-top:2.5rem"><div class="text-[11px] uppercase tracking-[0.3em] text-accent"></div><h2 class="serif text-3xl mt-2">My Auctions</h2><p class="text-muted-foreground">View, edit, and manage all your active auctions. Live cards show bidding activity; ended cards show final results.</p><div class="sam-grid">${auctions.map(card).join('') || '<p class="sam-meta">You have not created any auctions yet.</p>'}</div></div>`;
-    anchor.insertBefore(section, anchor.firstElementChild); ignoreManagerMutationsUntil = Date.now() + 500;
-    section.querySelectorAll('[data-id]').forEach((button) => button.addEventListener('click', () => openEditor(auctions.find((a) => Number(a.id) === Number(button.dataset.id)), categories)));
-    section.querySelectorAll('[data-view-id]').forEach((button) => button.addEventListener('click', () => openViewer(auctions.find((a) => Number(a.id) === Number(button.dataset.viewId)))));
+      const user = getUser();
+      if (!user || user.role !== 'seller' || !location.pathname.startsWith('/seller')) {
+        const old = document.getElementById('seller-auction-manager');
+        if (old) old.remove();
+        lastSnapshot = null;
+        return;
+      }
+
+      const [response, categoriesResponse, alertsResponse] = await Promise.all([
+        fetch(`${api}/seller/auctions`, { headers: authHeaders() }),
+        fetch(`${api}/categories`),
+        fetch(`${api}/seller/auctions/recent-alerts`, { headers: authHeaders() }),
+      ]);
+      if (!response.ok) return;
+      const auctions = await response.json();
+      const categories = categoriesResponse.ok ? await categoriesResponse.json() : [];
+      const sellerAlerts = alertsResponse.ok ? await alertsResponse.json() : [];
+
+      const existing = document.getElementById('seller-auction-manager');
+
+      // Keep the "All auctions" heading hidden even on a no-op pass, in case
+      // the React bundle re-rendered it back into view in the meantime.
+      const anchor = [...document.querySelectorAll('h2')].find((node) => node.textContent.trim() === 'All auctions')?.parentElement || document.querySelector('main') || document.querySelector('[role="main"]') || document.body;
+      const listingHeading = [...anchor.querySelectorAll('h2')].find((node) => node.textContent.trim() === 'All auctions');
+      if (listingHeading) { listingHeading.style.display = 'none'; if (listingHeading.nextElementSibling) listingHeading.nextElementSibling.style.display = 'none'; }
+
+      const snapshot = JSON.stringify({ auctions, categories, sellerAlerts });
+      if (!force && existing && snapshot === lastSnapshot) {
+        // Nothing actually changed - leave the current DOM alone so nothing flickers.
+        return;
+      }
+      lastSnapshot = snapshot;
+
+      const live = auctions.filter(isLive); const ended = auctions.filter(isCompleted);
+      const bidTotal = auctions.reduce((sum, auction) => sum + Number(auction.bid_count || 0), 0);
+      const sold = ended.filter((auction) => auction.winner_id);
+      const revenue = sold.reduce((sum, auction) => sum + Number(auction.current_price || 0), 0);
+      const soldRate = ended.length ? Math.round((sold.length / ended.length) * 100) : 0;
+      const card = (auction) => {
+        const liveAuction = isLive(auction); const endedAuction = isCompleted(auction);
+        const status = liveAuction ? 'Live' : endedAuction ? 'Ended' : 'Pending';
+        return `<article class="sam-card"><img class="sam-card-image" src="${escapeHtml(auction.image_url || '')}" alt="${escapeHtml(auction.name)}" onerror="this.style.display='none'"><div class="sam-card-content"><span class="sam-status ${endedAuction ? 'ended' : liveAuction ? '' : 'pending'}">${status}</span><div class="sam-meta">${escapeHtml(auction.category_name)}</div><h3>${escapeHtml(auction.name)}</h3><div class="sam-meta">${liveAuction ? remainingTime(auction.end_time) : endedAuction ? `Ended ${new Date(auction.end_time).toLocaleDateString()}` : 'Awaiting start'}</div><div class="sam-actions"><button class="sam-button secondary" data-view-id="${auction.id}">View auction</button><button class="sam-button" data-id="${auction.id}" ${endedAuction ? 'disabled' : ''}>${endedAuction ? 'Ended auction' : 'Edit auction'}</button></div></div></article>`;
+      };
+
+      // Build the new section off-DOM first, so the old one stays visible
+      // (no blank gap) right up until the moment we swap it in.
+      const section = document.createElement('section'); section.id = 'seller-auction-manager'; section.innerHTML = `<div class="fade-up"><div class="flex items-center justify-between gap-4"><div><div class="text-[11px] uppercase tracking-[0.3em] text-accent"></div><h1 class="serif text-4xl md:text-5xl mt-2">Dashboard</h1></div><a href="/" class="text-sm text-accent hover:underline whitespace-nowrap" data-testid="seller-dashboard-back"></a></div><p class="text-muted-foreground mt-3">Your auction performance, sales, and activity in one place.</p></div><div class="sam-dashboard-grid"><div class="sam-metric"><div class="label">Total auctions</div><div class="value">${auctions.length}</div></div><div class="sam-metric"><div class="label">Live auctions</div><div class="value">${live.length}</div></div><div class="sam-metric"><div class="label">Ended auctions</div><div class="value">${ended.length}</div></div><div class="sam-metric"><div class="label">Bids received</div><div class="value">${bidTotal}</div></div></div><div class="sam-summary"><div class="sam-panel"><div class="label">Revenue summary</div><h3>${money(revenue)} in completed sales</h3><div class="sam-meta">Across ${sold.length} sold auction${sold.length === 1 ? '' : 's'}.</div></div><div class="sam-panel"><div class="label">Auction performance</div><h3>${soldRate}% completed-auction sell-through</h3><div class="sam-meta">Average ${auctions.length ? (bidTotal / auctions.length).toFixed(1) : '0'} bids per auction.</div></div></div><div class="rounded-2xl border border-border bg-card p-6" style="margin-top:1rem"><h2 class="serif text-2xl">Recent alerts</h2><div class="mt-5 space-y-4">${sellerAlerts.slice(0, 5).map((note) => `<div class="text-sm"><div class="font-medium leading-snug">${escapeHtml(note.title)}</div><div class="text-xs text-muted-foreground mt-0.5 leading-relaxed">${escapeHtml(note.message || '')}</div><div class="text-[11px] text-muted-foreground mt-1">${timeAgo(note.created_at)}</div></div>`).join('') || '<div class="text-sm text-muted-foreground">No alerts yet.</div>'}</div></div><div style="margin-top:2.5rem"><div class="text-[11px] uppercase tracking-[0.3em] text-accent"></div><h2 class="serif text-3xl mt-2">My Auctions</h2><p class="text-muted-foreground">View, edit, and manage all your active auctions. Live cards show bidding activity; ended cards show final results.</p><div class="sam-grid">${auctions.map(card).join('') || '<p class="sam-meta">You have not created any auctions yet.</p>'}</div></div>`;
+
+      section.querySelectorAll('[data-id]').forEach((button) => button.addEventListener('click', () => openEditor(auctions.find((a) => Number(a.id) === Number(button.dataset.id)), categories)));
+      section.querySelectorAll('[data-view-id]').forEach((button) => button.addEventListener('click', () => openViewer(auctions.find((a) => Number(a.id) === Number(button.dataset.viewId)))));
+
+      ignoreManagerMutationsUntil = Date.now() + 500;
+      if (existing) existing.replaceWith(section);
+      else anchor.insertBefore(section, anchor.firstElementChild);
     } finally { managerRendering = false; }
   }
+
   let renderScheduled = false;
   function scheduleManager() {
     if (renderScheduled) return;
     renderScheduled = true;
     setTimeout(() => { renderScheduled = false; renderManager(); }, 75);
   }
-  const observer = new MutationObserver(() => { strengthenPaymentPending(); installLoginRoleSelector(); enforcePositiveIncrementInput(); updateSellerNavigation(); if (!managerRendering && Date.now() > ignoreManagerMutationsUntil) scheduleManager(); }); observer.observe(document.documentElement, { childList: true, subtree: true });
+
+  // Mutations that happen entirely inside the manager's own section, its modals,
+  // or its toast notice are self-caused noise (our own re-renders / DOM writes) -
+  // they must not schedule another rebuild, or the section fights with itself.
+  function isInternalMutation(mutations) {
+    return mutations.every((m) => {
+      const node = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+      return !!node?.closest?.('#seller-auction-manager, .sam-modal, .sam-notice');
+    });
+  }
+
+  const observer = new MutationObserver((mutations) => {
+    strengthenPaymentPending(); installLoginRoleSelector(); enforcePositiveIncrementInput(); updateSellerNavigation();
+    if (managerRendering || Date.now() <= ignoreManagerMutationsUntil) return;
+    if (isInternalMutation(mutations)) return;
+    scheduleManager();
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener('focus', scheduleManager); setInterval(scheduleManager, 15000); strengthenPaymentPending(); installLoginRoleSelector(); enforcePositiveIncrementInput(); updateSellerNavigation(); scheduleManager();
 })();
