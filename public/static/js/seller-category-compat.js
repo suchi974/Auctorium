@@ -3,8 +3,10 @@
  *
  * The bundle's seller form expects /api/categories to be an array of names,
  * while the API correctly returns category objects. It also stores the selected
- * name under `category` but submits `category_id`. Convert the response for the
- * UI and restore the selected numeric ID immediately before submission.
+ * name under `category` but submits `category_id`. Only convert the response
+ * on the seller page; the Browse page needs the original objects to render
+ * each category name and ID. Restore the selected numeric ID immediately
+ * before submission.
  */
 (() => {
   const categoryIds = new Map();
@@ -30,9 +32,11 @@
             categoryIds.set(String(name).trim(), Number(category_id));
           });
 
-          // The bundle's <Select> renders each entry directly as text/value, so it
-          // needs plain strings here, not {category_id, name} objects (that object
-          // shape was slipping through and crashing React on the seller page).
+          // The seller bundle renders each entry directly as text/value, while
+          // Browse uses category_id and name. Keep the API response intact
+          // outside the seller page so Browse can display the category labels.
+          if (!window.location.pathname.startsWith('/seller')) return;
+
           const response = JSON.stringify(categories.map(({ name }) => name));
 
           Object.defineProperties(this, {

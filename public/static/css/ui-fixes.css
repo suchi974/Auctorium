@@ -1,0 +1,9 @@
+/* Keep the guest navigation affordances consistent. */
+[data-testid="nav-login"] {
+  transition: color 150ms ease;
+}
+
+[data-testid="nav-login"]:hover,
+[data-testid="nav-login"]:focus-visible {
+  color: #c28529;
+}
