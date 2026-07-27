@@ -71,7 +71,6 @@ Open http://localhost:5000
 | Seller | seller2@auction.com | Password@123 |
 | Buyer | buyer@auction.com | Password@123 |
 | Buyer | buyer2@auction.com | Password@123 |
-| Admin | admin@auction.com | Password@123 |
 
 ---
 
@@ -145,53 +144,102 @@ Open http://localhost:5000
 
 ## Project structure
 ```
-auction-system/
-├── server.js                              # entry, registers all routes + WS + close-job
-├── config/db.js                           # mysql2 pool
-├── middleware/authMiddleware.js
-├── sockets/bidSocket.js                   # adds user_<role>_<id> rooms
+AUCTION-SYSTEM/
+│
+├── config/
+│   └── db.js                     # Database connection configuration
+│
 ├── controllers/
-│   ├── authController.js
-│   ├── productController.js
-│   ├── bidController.js                   # robust validation + outbid emit
-│   ├── auctionController.js               # closes auctions + seller notification
-│   ├── categoryController.js
-│   ├── notificationController.js
-│   ├── paymentController.js               # mock gateway
-│   ├── myProductsController.js
-│   └── sellerAuctionController.js         # NEW — seller-side edit/close/delete + bid alerts
+│   ├── auctionController.js      # Auction management
+│   ├── authController.js         # Authentication & authorization
+│   ├── bidController.js          # Bidding operations
+│   ├── categoryController.js     # Product categories
+│   ├── myProductsController.js   # User's listed products
+│   ├── notificationController.js # Notifications
+│   ├── paymentController.js      # Payment processing
+│   ├── productController.js      # Product CRUD operations
+│   └── sellerAuctionController.js# Seller auction management
+│
+├── middleware/
+│   └── authMiddleware.js         # JWT/Auth middleware
+│
+├── public/
+│   ├── static/
+│   │   ├── css/
+│   │   │   ├── main.cf0ca652.css
+│   │   │   ├── main.cf0ca652.css.map
+│   │   │   └── ui-fixes.css
+│   │   │
+│   │   └── js/
+│   │       ├── main.0c3ab8c3.js
+│   │       ├── main.0c3ab8c3.js.map
+│   │       ├── main.0c3ab8c3.js.LICENSE.txt
+│   │       ├── buyer-recent-alerts.js
+│   │       ├── seller-auction-management.js
+│   │       └── seller-category-compat.js
+│   │
+│   |       
+│   ├── app.js
+│   ├── asset-manifest.json
+│   ├── index.html
+│   └── styles.css
+│
 ├── routes/
 │   ├── authRoutes.js
-│   ├── productRoutes.js
 │   ├── bidRoutes.js
 │   ├── categoryRoutes.js
+│   ├── myProductsRoutes.js
 │   ├── notificationRoutes.js
 │   ├── paymentRoutes.js
-│   ├── myProductsRoutes.js
-│   └── sellerAuctionRoutes.js             # NEW
+│   ├── productRoutes.js
+│   └── sellerAuctionRoutes.js
+│
+├── sockets/
+│   └── bidSocket.js              # Real-time bidding using Socket.IO
+│
 ├── sql/
-│   ├── install.sql                        # NEW — recommended one-shot schema + seed
-│   ├── schema.sql                         # legacy — schema only
-│   ├── seed.sql                           # legacy — sample data only
-│   ├── migration.sql                      # additive, idempotent upgrade path
-│   └── INSTALL.md                         # detailed setup walkthrough (CLI/Workbench/phpMyAdmin)
-├── public/
-│   ├── index.html                         # bell + My Products + Payment + Details + footer
-│   ├── app.js                             # base app logic
-│   ├── styles.css                         # polished + new components
-│   └── static/
-│       ├── css/                           # built React app CSS + ui-fixes.css
-│       └── js/                            # built React app JS + patch scripts:
-│           ├── seller-category-compat.js
-│           ├── buyer-recent-alerts.js
-│           └── seller-auction-management.js  # NEW
-├── seedDatabase.js
-├── insertProducts.js
-├── listProducts.js
-├── checkDB.js
-└── package.json
+│   ├── INSTALL.md                # Database installation guide
+│   ├── install.sql
+│   ├── migration.sql
+│   ├── schema.sql
+│   └── seed.sql
+│
+├── .env                          # Environment variables
+├── checkDB.js                    # Database connection checker
+├── insertProducts.js             # Product import script
+├── listProducts.js               # Product listing utility
+├── package.json
+├── package-lock.json
+├── README.md
+├── seedDatabase.js               # Database seeding script
+├── server.js                     # Express server entry point
+└── yarn.lock
 ```
 
+## Folder Overview
+
+| Folder | Purpose |
+|---------|----------|
+| **config/** | Database and application configuration. |
+| **controllers/** | Contains business logic for authentication, auctions, bidding, products, payments, notifications, and categories. |
+| **middleware/** | Express middleware such as authentication and authorization. |
+| **public/** | Frontend build files, static assets, stylesheets, JavaScript bundles, and uploaded files. |
+| **routes/** | Defines REST API endpoints and connects them to controllers. |
+| **sockets/** | Socket.IO handlers for real-time auction bidding. |
+| **sql/** | SQL scripts for installation, schema creation, migrations, and sample data. |
+
+## Main Files
+
+| File | Description |
+|------|-------------|
+| `server.js` | Starts the Express server and initializes the application. |
+| `config/db.js` | MySQL database connection configuration. |
+| `.env` | Stores environment variables such as database credentials and JWT secret. |
+| `package.json` | Project metadata, dependencies, and npm scripts. |
+| `seedDatabase.js` | Populates the database with sample data. |
+| `checkDB.js` | Tests database connectivity. |
+| `insertProducts.js` | Imports products into the database. |
+| `listProducts.js` | Utility script to display stored products. |
 ---
 
 ## Notes
